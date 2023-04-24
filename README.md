@@ -9,13 +9,12 @@ Sample applications are available for the other frameworks here:
 
 If you need an Azure account, you can [create one for free](https://azure.microsoft.com/en-us/free/).
 
-
 # VChaCHa
 
 VChaCha (Voice Chat Chat or Voice Cha-Cha) is a voice interactive online ChatBot besed on OpenAI GPT-3.5-turbo LLM.
 
 As you can see above, this project is very easy to boot through Azure Application Service.
 
->  You need to set your own Azure and OpenAI keys in **sesstings.py** before run.
+> You need to set your own Azure and OpenAI keys in **settings.py** before run.
 
 Have fun!
