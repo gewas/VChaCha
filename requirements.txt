@@ -1,0 +1,10 @@
+flask[async]==2.2.3
+Flask==2.2.3
+openai==0.27.2
+azure-cognitiveservices-speech==1.26.0
+waitress==2.1.2
+ffmpeg==1.4
+aioflask==0.4.0
+gevent==22.10.2
+wordcloud==1.8.2.2
+jieba==0.42.1

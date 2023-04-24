@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>VChaCha</title>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <style>
+      * {
+        padding: 0;
+        margin: 0;
+      }
+      .title {
+        margin-top: 16px;
+        text-align: center;
+        font-family: fantasy;
+        font-size: 20px;
+      }
+      .container {
+        margin-top: 16px;
+        margin-bottom: 16px;
+        font-size: 14px;
+      }
+      .chat-window {
+        border: 1px solid #aaa;
+        border-radius: 8px;
+        height: 520px;
+        overflow-y: scroll;
+      }
+      .chat-message {
+        margin-top: 16px;
+        margin-bottom: 16px;
+        font-family: system-ui;
+      }
+      .chat-message.left {
+        text-align: left;
+        margin-left: 4px;
+        margin-right: 4px;
+      }
+      .chat-message.right {
+        text-align: left;
+        margin-left: 4px;
+        margin-right: 4px;
+      }
+      .chat-message .message-text {
+        display: inline-block;
+        padding: 16px 24px;
+        padding-bottom: 2px;
+        border-radius: 8px;
+        background-color: #f0f0f0;
+        min-width: 100%;
+        word-wrap: break-word;
+        word-break: break-word;
+      }
+      .chat-message.right .message-text{
+        background-color: #fafafa;
+      }
+      .btn {
+        border-radius: 8px;
+      }
+      .input-area {
+        resize: none !important;
+        height: 50px !important;
+        padding: 12px 0.75rem !important;
+      }
+      #btn-record {
+        margin-top: 16px;
+        height: 50px;
+        min-width: 100%;
+      }
+      .bottom-bar {
+        font-family: fantasy;
+      }
+      ::-webkit-scrollbar {
+        display: none;
+      }
+      #toast-container {
+        margin-top: 62px;
+      }
+      .noselect {
+        -webkit-touch-callout: none; /* iOS Safari */
+        -webkit-user-select: none; /* Safari */
+        -khtml-user-select: none; /* Konqueror HTML */
+        -moz-user-select: none; /* Old versions of Firefox */
+        -ms-user-select: none; /* Internet Explorer/Edge */
+        user-select: none; /* Non-prefixed version, currently
+                                        supported by Chrome, Edge, Opera and Firefox */
+      }
+    </style>
+    <link
+      href="/static/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ"
+      crossorigin="anonymous"
+    />
+    <script
+      src="/static/bootstrap.bundle.min.js"
+      integrity="sha384-ENjdO4Dr2bkBIFxQpeoTz1HIcje39Wm4jDKdf19U8gI4ddQ3GYNS7NTKfAdVQSZe"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="/static/jquery-3.6.4.min.js"
+      integrity="sha256-oP6HI9z1XaZNBrJURtCoUT5SUnxFr8s3BzRl+cbzUq8="
+      crossorigin="anonymous"
+    ></script>
+    <script src="/static/marked.min.js"></script>
+    <script src="/static/toastr.min.js"></script>
+    <link rel="stylesheet" href="/static/toastr.min.css" />
+  </head>
+  <body>
+    <div id="toast-container" class="toast-top-center"></div>
+    <div><div class="title">VChaCha</div></div>
+    <div class="container" id="container">
+      <div class="chat-window" id="chat-window"></div>
+      <div class="bottom-bar mt-3">
+        <div class="input-group">
+          <button class="btn btn-warning" type="button" id="btn-session">
+            NEW
+          </button>
+          <textarea
+            class="form-control input-area"
+            placeholder="INPUT YOUR MSG"
+            aria-label="Message"
+            id="input-message"
+          ></textarea>
+          <button class="btn btn-info" type="button" id="btn-send">SEND</button>
+        </div>
+        <div>
+          <button type="button" class="btn btn-primary" id="btn-record">
+            PRESS & SPEAK
+          </button>
+        </div>
+      </div>
+    </div>
+    <script>
+      let speech = localStorage.getItem("speech");
+      if (speech == null) window.location.href = "/";
+
+      const btnRecord = document.getElementById("btn-record");
+      let mediaRecorder;
+      let audioStream;
+      let chunks = [];
+      let startTime;
+      let token = localStorage.getItem("token");
+      if (token == null) token = "";
+      let sessionContext;
+
+      function processContext() {
+        for (let e of sessionContext) {
+          if (e.role === "user") showMessage(e.content, "right");
+          else if (e.role === "assistant") showMessage(e.content, "left");
+          else;
+        }
+      }
+
+      function getSession() {
+        fetch("/api/session", {
+          method: "GET",
+          headers: {
+            token: token,
+          },
+        })
+          .then((resp) => {
+            let headers = resp.headers;
+            token = headers.get("token");
+            localStorage.setItem("token", token);
+            return resp.json();
+          })
+          .then((data) => {
+            sessionContext = data;
+            processContext();
+          });
+      }
+      getSession();
+
+      let tts;
+      function chat(query) {
+        sessionContext.push({ role: "user", content: query });
+        showMessage(query, "right");
+        fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            speech: speech,
+            token: token,
+          },
+          body: JSON.stringify({ query: query }),
+        })
+          .then((resp) => {
+            tts = resp.headers.get("tts");
+            return resp.json();
+          })
+          .then((data) => {
+            showMessage(data.content, "left");
+            sessionContext.push(data);
+            tts && new Audio(`/audio/${tts}`).play();
+            tts = null;
+          })
+          .catch((e) => {
+            toastError("Request Failed!");
+          });
+      }
+
+      function checkPermission() {
+        navigator.permissions
+          .query({ name: "microphone" })
+          .then(function (permissionStatus) {
+            if (permissionStatus.state === "granted") {
+              startRecording();
+            } else if (permissionStatus.state === "prompt") {
+              navigator.mediaDevices
+                .getUserMedia({ audio: true })
+                .then(function () {
+                  startRecording();
+                })
+                .catch((e) => {
+                  toastWarning("Record Error");
+                });
+            } else if (permissionStatus.state === "denied") {
+              toastWarning("No Permission to Record");
+            }
+          });
+      }
+
+      function handleDataAvailable(event) {
+        if (event.data && event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      }
+
+      function startRecording() {
+        chunks = [];
+        startTime = Date.now();
+        btnRecord.classList.add("btn-danger");
+        navigator.mediaDevices
+          .getUserMedia({ audio: true })
+          .then((stream) => {
+            try {
+              audioStream = stream;
+              mediaRecorder = new MediaRecorder(stream);
+            } catch (e) {
+              console.error("Exception while creating MediaRecorder:", e);
+              return;
+            }
+            mediaRecorder.ondataavailable = handleDataAvailable;
+            mediaRecorder.start();
+          })
+          .catch((err) => {
+            console.error("getUserMedia error:", err);
+          });
+      }
+
+      function stopRecording() {
+        btnRecord.classList.remove("btn-danger");
+        if (mediaRecorder) {
+          mediaRecorder.onstop = (event) => {
+            audioStream && releaseMicrophone(audioStream);
+            audioStream = null;
+            let totalTime = Date.now() - startTime;
+            if (totalTime >= 500) {
+              const blob = new Blob(chunks, {
+                type: "audio/webm; codecs=opus",
+              });
+              const formData = new FormData();
+              formData.append("audio", blob, "speech.webm");
+              const xhr = new XMLHttpRequest();
+              xhr.open("POST", "/api/stt", true);
+              xhr.setRequestHeader("speech", speech);
+              xhr.onreadystatechange = function () {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                  text = xhr.responseText;
+                  chat(text);
+                }
+              };
+              xhr.send(formData);
+            }
+          };
+          mediaRecorder.stop();
+          mediaRecorder = null;
+        }
+      }
+
+      function releaseMicrophone(stream) {
+        if (stream && stream.getTracks) {
+          stream.getTracks().forEach((track) => {
+            track.stop();
+          });
+        }
+      }
+
+      function showMessage(message, alignment) {
+        const chatWindow = document.getElementById("chat-window");
+        const chatMessage = document.createElement("div");
+        chatMessage.className = "chat-message " + alignment;
+        chatMessage.addEventListener("contextmenu", function (event) {
+          event.preventDefault();
+          copyToClipboard(message);
+        });
+
+        let lastTouchTime = 0;
+        let touchTimeout;
+
+        chatMessage.addEventListener("touchstart", (event) => {
+          const currentTime = new Date().getTime();
+          const timeDifference = currentTime - lastTouchTime;
+
+          if (timeDifference < 250) {
+            clearTimeout(touchTimeout);
+            lastTouchTime = 0;
+            copyToClipboard(message);
+          } else {
+            touchTimeout = setTimeout(() => {
+              lastTouchTime = 0;
+            }, 200);
+          }
+
+          lastTouchTime = currentTime;
+        });
+
+        const messageText = document.createElement("div");
+        messageText.className = "message-text";
+        messageText.innerHTML = marked.parse(message);
+        chatMessage.appendChild(messageText);
+        chatWindow.appendChild(chatMessage);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+      }
+
+      function copyToClipboard(message) {
+        navigator.permissions
+          .query({ name: "clipboard-write" })
+          .then((result) => {
+            if (result.state == "granted" || result.state == "prompt") {
+              navigator.clipboard
+                .writeText(message)
+                .then(() => {
+                  toast("Content Copied!");
+                })
+                .catch((err) => {
+                  console.error("COPY FAILED", err);
+                });
+            }
+          });
+      }
+
+      function toast(text) {
+        toastr.options = {
+          timeOut: 200,
+          closeButton: false,
+          progressBar: false,
+          positionClass: "toast-top-center",
+          preventDuplicates: false,
+          newestOnTop: true,
+        };
+        toastr.success(text);
+      }
+      function toastWarning(text) {
+        toastr.options = {
+          timeOut: 1000,
+          closeButton: false,
+          progressBar: false,
+          positionClass: "toast-top-center",
+          preventDuplicates: false,
+          newestOnTop: true,
+        };
+        toastr.warning(text);
+      }
+      function toastError(text) {
+        toastr.options = {
+          timeOut: 2000,
+          closeButton: false,
+          progressBar: false,
+          positionClass: "toast-top-center",
+          preventDuplicates: false,
+          newestOnTop: true,
+        };
+        toastr.error(text);
+      }
+
+      function resizeChatWindow() {
+        var windowHeight =
+          window.innerHeight || document.documentElement.clientHeight;
+        var divHeight = windowHeight - 212;
+        document.getElementById("chat-window").style.height = divHeight + "px";
+      }
+
+      resizeChatWindow();
+
+      btnRecord.addEventListener("mousedown", function (event) {
+        event.preventDefault();
+        checkPermission();
+      });
+      btnRecord.addEventListener("touchstart", function (event) {
+        event.preventDefault();
+        checkPermission();
+      });
+      btnRecord.addEventListener("mouseup", stopRecording);
+      btnRecord.addEventListener("touchend", stopRecording);
+
+      const btnSession = document.getElementById("btn-session");
+      const btnSend = document.getElementById("btn-send");
+      const inputMessage = document.getElementById("input-message");
+
+      btnSession.addEventListener("click", function (event) {
+        event.preventDefault();
+        localStorage.setItem("token", "");
+        token = "";
+        const chatWindow = document.getElementById("chat-window");
+        chatWindow.innerHTML = "";
+        getSession();
+      });
+      btnSend.addEventListener("click", function (event) {
+        event.preventDefault();
+        const message = inputMessage.value;
+        if (message.trim() !== "") {
+          chat(message);
+          inputMessage.value = "";
+        }
+      });
+
+      var ctrlDown = false;
+      window.addEventListener("keydown", function (e) {
+        var keyCode = e.keyCode || e.which;
+
+        if (keyCode === 17) {
+          ctrlDown = true;
+        }
+
+        if (keyCode === 13 && ctrlDown) {
+          e.preventDefault();
+          btnSend.click();
+        }
+      });
+
+      window.addEventListener("keyup", function (e) {
+        var keyCode = e.keyCode || e.which;
+
+        if (keyCode === 17) {
+          ctrlDown = false;
+        }
+      });
+      window.addEventListener("resize", function () {
+        resizeChatWindow();
+      });
+    </script>
+  </body>
+</html>
